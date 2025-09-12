@@ -42,6 +42,15 @@ INSTALLED_APPS = [
     'events',
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    )
+}
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
@@ -55,6 +64,12 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'backend.urls'
 CORS_ALLOW_ALL_ORIGINS = True  # (for dev only)
+#CORS_ALLOW_ALL_ORIGINS = False
+#CORS_ALLOWED_ORIGINS = [
+#  "https://<your-frontend-domain>",
+#  "https://your-other-domain"
+#]
+
 
 TEMPLATES = [
     {

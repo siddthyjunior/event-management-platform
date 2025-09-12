@@ -4,12 +4,18 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from .models import Event, Registration, Skill
 from .serializers import EventSerializer, RegistrationSerializer, SkillSerializer
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
 
-    @action(detail=True, methods=['post'])
+    def get_permissions(self):
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsAdminUser()]
+        return [IsAuthenticated()]
+
+    @action(detail=True, methods=['post'],permission_classes=[IsAuthenticated])
     def register(self, request, pk=None):
         """
         Accepts: { "username": "...", "email": "...", "skills": "s1,s2" } (skills can be list too)
@@ -50,8 +56,18 @@ class EventViewSet(viewsets.ModelViewSet):
 
         return Response(serializer.data,
                         status=status.HTTP_201_CREATED if reg_created else status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['get'], permission_classes=[IsAdminUser])
+    def registrations(self, request, pk=None):
+        """
+        Organizer-only: List all registrations for this event.
+        """
+        event = self.get_object()
+        regs = Registration.objects.filter(event=event)
+        serializer = RegistrationSerializer(regs, many=True)
+        return Response(serializer.data)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
     def recommendations(self, request, pk=None):
         """
         Simple greedy team formation: try to maximize skill diversity.
@@ -84,7 +100,39 @@ class EventViewSet(viewsets.ModelViewSet):
                 unassigned.remove(c)
             teams.append([u.username for u in team])
 
-        return Response({'teams': teams})
+    @action(detail=True, methods=['get'], permission_classes=[IsAdminUser])
+    def teams(self, request, pk=None):
+        """
+        Generate teams for this event (Organizer only).
+        Returns { "teams": [["user1","user2"], ["user3","user4"], ...] }
+        """
+        event = self.get_object()
+        regs = Registration.objects.filter(event=event).select_related('user')
+        users = [r.user for r in regs]
+
+        # helper: get skills of a user
+        def user_skills(u):
+            return set(Skill.objects.filter(user=u).values_list('name', flat=True))
+
+        def overlap(u1, u2):
+            return len(user_skills(u1) & user_skills(u2))
+
+        unassigned = users.copy()
+        teams = []
+        max_size = getattr(event, 'max_team_size', 4)  # default = 4
+
+        while unassigned:
+            leader = unassigned.pop(0)
+            team = [leader]
+            candidates = sorted(unassigned, key=lambda u: overlap(leader, u))
+            for c in candidates:
+                if len(team) >= max_size:
+                    break
+                team.append(c)
+                unassigned.remove(c)
+            teams.append([u.username for u in team])
+
+        return Response({"teams": teams})
 
 class RegistrationViewSet(viewsets.ModelViewSet):
     queryset = Registration.objects.all()
